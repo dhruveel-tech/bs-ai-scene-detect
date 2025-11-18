@@ -1,0 +1,1 @@
+# bs-ai-scene-detect

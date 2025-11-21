@@ -29,7 +29,6 @@ def run_scenedetect(video_path, output_dir):
         "list-scenes", "save-images"
     ], check=True)
 
-
 def sanitize_timecode(tc):
     """Convert 00:00:11.000 → 00-00-11.000 for filenames."""
     return tc.replace(":", "-")

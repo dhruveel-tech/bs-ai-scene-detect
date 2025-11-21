@@ -5,9 +5,14 @@ import time
 import cv2
 import numpy as np
 from datetime import timedelta
+import torch
+import shutil
+from PIL import Image
+from transformers import CLIPProcessor, CLIPModel
 
-video_path = r"D:\SDNA\Scene_Detector\scene_detection_samples\Real_Madrid\Real_Madrid.mp4"
-output_dir = r"D:\SDNA\Scene_Detector\scene_subdivision\Real_Madrid"
+video_path = r"D:\SDNA\Scene_Detector\final_op\apple\apple.mp4"
+output_dir = r"D:\SDNA\Scene_Detector\final_op\apple"
+file_name = r"D:\SDNA\Scene_Detector\final_op\apple\processing_time.txt"
 
 # Configuration
 EXTRACT_INTERVAL_SECONDS = 1.5  # Extract more frequently for better detection
@@ -18,6 +23,22 @@ STRUCTURAL_THRESHOLD = 0.85  # SSIM threshold
 EDGE_THRESHOLD = 0.75  # Edge detection threshold
 MIN_SUBSCENE_DURATION = 2.5  # Minimum duration for a sub-scene
 
+# -----------------------------------------
+# 2. CLIP MODEL SETUP
+# -----------------------------------------
+print("Loading CLIP model...")
+model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+
+def get_features(img_path):
+    image = Image.open(img_path).convert("RGB")
+    inputs = processor(images=image, return_tensors="pt")
+    with torch.no_grad():
+        features = model.get_image_features(**inputs)
+    return features[0] / features[0].norm()
+
+def cosine(a, b):
+    return torch.dot(a, b).item()
 
 def run_scenedetect(video_path, output_dir):
     """Run scenedetect to split videos and generate scene CSV."""
@@ -27,22 +48,23 @@ def run_scenedetect(video_path, output_dir):
     os.makedirs(images_dir, exist_ok=True)
     os.makedirs(video_dir, exist_ok=True)
 
-    print("🎬 Detecting scenes and splitting video...")
+    print("Detecting scenes and splitting video...")
     subprocess.run([
         "scenedetect", "-i", video_path,
         "--output", video_dir,
-        "detect-content",
+        "detect-hash",
         "split-video"
     ], check=True)
 
-    print("📋 Generating scene list CSV...")
+    print("Generating scene list CSV...")
     subprocess.run([
         "scenedetect", "-i", video_path,
         "--output", images_dir,
-        "detect-content",
+        "detect-hash",
         "list-scenes"
     ], check=True)
 
+    return images_dir
 
 def calculate_histogram_similarity(img1, img2):
     """Calculate color histogram similarity."""
@@ -176,7 +198,7 @@ def detect_subscenes_advanced(frames_data, min_duration=2.5):
                 if confirmed:
                     # Split here: previous sub-scene ends at frame_idx-1
                     subscenes.append((current_start, frame_idx - 1))
-                    print(f"   🔍 Break at {sim['timestamp']:.2f}s | Hist:{sim['histogram']:.2f} Struct:{sim['structural']:.2f} Edge:{sim['edge']:.2f} → Combined:{sim['combined']:.2f}")
+                    print(f"Break at {sim['timestamp']:.2f}s | Hist:{sim['histogram']:.2f} Struct:{sim['structural']:.2f} Edge:{sim['edge']:.2f} → Combined:{sim['combined']:.2f}")
                     current_start = frame_idx  # New sub-scene starts at the changed frame
         
         i += 1
@@ -193,7 +215,7 @@ def detect_subscenes_advanced(frames_data, min_duration=2.5):
             # Merge with previous sub-scene
             prev_start, prev_end = merged_subscenes[-1]
             merged_subscenes[-1] = (prev_start, end)
-            print(f"   ⚠️  Merged short sub-scene ({duration:.1f}s) with previous")
+            print(f"Merged short sub-scene ({duration:.1f}s) with previous")
         else:
             merged_subscenes.append((start, end))
     
@@ -234,9 +256,9 @@ def extract_and_analyze_images(video_path, output_dir, interval_seconds=1.5):
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     
-    print(f"\n📹 Video FPS: {fps:.2f}")
-    print(f"⏱️  Extracting images every {interval_seconds} seconds")
-    print(f"🔍 Multi-metric detection enabled\n")
+    print(f"\nVideo FPS: {fps:.2f}")
+    print(f"Extracting images every {interval_seconds} seconds")
+    print(f"Multi-metric detection enabled\n")
     
     all_subscenes_info = []
     
@@ -247,7 +269,7 @@ def extract_and_analyze_images(video_path, output_dir, interval_seconds=1.5):
         end_time = float(scene["End Time (seconds)"])
         scene_duration = float(scene["Length (seconds)"])
         
-        print(f"🎬 Scene {scene_idx:03d}: Duration {scene_duration:.2f}s")
+        print(f"Scene {scene_idx:03d}: Duration {scene_duration:.2f}s")
         
         # Calculate number of images
         num_images = max(MIN_IMAGES_PER_SCENE, 
@@ -279,7 +301,7 @@ def extract_and_analyze_images(video_path, output_dir, interval_seconds=1.5):
         if len(frames_data) > 0:
             subscene_boundaries = detect_subscenes_advanced(frames_data, MIN_SUBSCENE_DURATION)
             
-            print(f"   📊 Divided into {len(subscene_boundaries)} sub-scenes")
+            print(f"Divided into {len(subscene_boundaries)} sub-scenes")
             
             # Save images and info for each sub-scene
             for sub_idx, (start_idx, end_idx) in enumerate(subscene_boundaries, start=1):
@@ -310,7 +332,7 @@ def extract_and_analyze_images(video_path, output_dir, interval_seconds=1.5):
     cap.release()
     
     # Don't split videos here - will do it later based on images
-    print(f"\n✅ Analyzed {len(scenes)} scenes into {len(all_subscenes_info)} sub-scenes")
+    print(f"\nAnalyzed {len(scenes)} scenes into {len(all_subscenes_info)} sub-scenes")
     return all_subscenes_info
 
 
@@ -328,7 +350,7 @@ def rename_subscene_files(output_dir, base_name, subscenes_info):
     images_dir = os.path.join(output_dir, "scenes_images")
     subscenes_dir = os.path.join(output_dir, "subscenes_videos")
     
-    print("\n🔄 Renaming files with timestamps...\n")
+    print("\nRenaming files with timestamps...\n")
     
     for sub_info in subscenes_info:
         scene_num = sub_info['scene_num']
@@ -397,8 +419,102 @@ def create_subscene_videos(video_path, output_dir, base_name, subscenes_info):
             output_video
         ]
 
-        print(f"🎞️  Creating: {output_video}")
+        print(f"Creating: {output_video}")
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+# -----------------------------------------
+# 3. CLIP SUBSCENE DETECTION
+# -----------------------------------------
+def detect_subscenes(images_dir):
+
+    image_paths = sorted(
+        [os.path.join(images_dir, f) for f in os.listdir(images_dir)
+         if f.lower().endswith((".jpg", ".png"))]
+    )
+
+    print(f"Total extracted images: {len(image_paths)}")
+
+    embeddings = [get_features(p) for p in image_paths]
+
+    threshold = 0.90  
+
+    subscene_id = 0
+    subscenes = {subscene_id: [image_paths[0]]}
+
+    for i in range(1, len(embeddings)):
+        sim = cosine(embeddings[i-1], embeddings[i])
+        print(f"Similarity {i}: {sim}")
+
+        if sim < threshold: 
+            subscene_id += 1
+            subscenes[subscene_id] = []
+
+        subscenes[subscene_id].append(image_paths[i])
+
+    return subscenes
+
+def save_subscenes(subscenes, output_dir):
+    output = os.path.join(output_dir, "final_scene")
+
+    if os.path.exists(output):
+        shutil.rmtree(output)
+
+    os.makedirs(output)
+
+    for sid, imgs in subscenes.items():
+        folder = os.path.join(output, f"subscene_{sid}")
+        os.makedirs(folder, exist_ok=True)
+
+        scene_id_str = f"{sid:03d}"
+
+        for img in imgs:
+            base = os.path.basename(img)
+
+            # Extract timestamp safely
+            before, _, timestamp = base.rpartition("_")
+
+            if timestamp == "":
+                new_name = base  # fallback
+            else:
+                new_name = f"Scene_{scene_id_str}_{timestamp}"
+
+            shutil.copy(img, os.path.join(folder, new_name))
+
+    print("\n✔ Saved and Renamed Sub-Scenes using CLIP →", output)
+
+    return output
+
+def move_files_and_remove_subfolders(parent_folder):
+    """
+    Moves all files from subfolders into the parent folder.
+    - No renaming
+    - No overwriting (duplicates are skipped)
+    - Removes empty subfolders after moving
+    """
+    for root, dirs, files in os.walk(parent_folder):
+        if root == parent_folder:
+            continue
+
+        for file in files:
+            src = os.path.join(root, file)
+            dst = os.path.join(parent_folder, file)
+
+            if os.path.exists(dst):
+                print(f"Skipped (already exists): {file}")
+                continue
+
+            shutil.move(src, dst)
+            print(f"Moved: {src} → {dst}")
+
+    for root, dirs, files in os.walk(parent_folder, topdown=False):
+        if root == parent_folder:
+            continue
+        if not os.listdir(root):  # Folder empty
+            os.rmdir(root)
+            print(f"Removed empty folder: {root}")
+
+    print("Completed moving files and removing subfolders.")
 
 # ---------------------------
 # RUN EVERYTHING
@@ -407,11 +523,11 @@ if __name__ == "__main__":
     start_time = time.time()
     
     print("="*60)
-    print("🎥 ADVANCED SCENE SUBDIVISION SYSTEM")
+    print("ADVANCED SCENE SUBDIVISION SYSTEM")
     print("="*60)
     
     # Step 1: Detect scenes
-    run_scenedetect(video_path, output_dir)
+    images_dir = run_scenedetect(video_path, output_dir)
     
     # Step 2: Extract images and detect sub-scenes
     subscenes_info = extract_and_analyze_images(video_path, output_dir, EXTRACT_INTERVAL_SECONDS)
@@ -420,9 +536,17 @@ if __name__ == "__main__":
     video_name = os.path.splitext(os.path.basename(video_path))[0]
     create_subscene_videos(video_path, output_dir, video_name, subscenes_info)
     rename_subscene_files(output_dir, video_name, subscenes_info)
+
+    subscenes = detect_subscenes(images_dir)
+
+    final_scen_dir = save_subscenes(subscenes, output_dir)
+
+    move_files_and_remove_subfolders(final_scen_dir)
     
     end_time = time.time()
     print(f"\n{'='*60}")
-    print(f"⏱️  Total time: {end_time - start_time:.2f} seconds")
-    print(f"✅ Processing complete!")
+    with open(file_name,'w') as f:
+        f.write(f"Total time: {end_time - start_time:.2f} seconds")
+    print(f"Total time: {end_time - start_time:.2f} seconds")
+    print(f"Processing complete!")
     print(f"{'='*60}")

@@ -1,0 +1,15 @@
+opencv-python
+numpy
+torch
+transformers
+pillow
+tqdm
+scenedetect
+matplotlib
+scikit-image
+moviepy
+
+
+
+
+# torch --index-url https://download.pytorch.org/whl/cu121

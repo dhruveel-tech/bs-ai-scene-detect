@@ -1,8 +1,3 @@
-"""
-Advanced Scene Detection and Subdivision System
-Production-ready version with comprehensive error handling and logging
-"""
-
 import subprocess
 import csv
 import os
@@ -26,10 +21,8 @@ from transformers import CLIPProcessor, CLIPModel
 # ============================================================================
 
 # File paths
-VIDEO_PATH = r"D:\SDNA\Scene_Detector\op_using_detect_content\ind_vs_pak\full_match\ind_vs_pak.mp4"
-OUTPUT_DIR = r"D:\SDNA\Scene_Detector\final_op\ind_vs_pak"
-# LOG_FILE = os.path.join(OUTPUT_DIR, "processing_log.txt")
-# TIME_FILE = os.path.join(OUTPUT_DIR, "processing_time.txt")
+VIDEO_PATH = r"D:\SDNA\Scene_Detector\scene_subdivision\Mard\mard.mp4"
+OUTPUT_DIR = r"D:\SDNA\Scene_Detector\final_op\Mard"
 
 # ============================================================================
 # DETECTION PARAMETERS
@@ -71,28 +64,43 @@ CLIP_SIMILARITY_THRESHOLD = 0.90
 # 'detect-hash' = uses content-aware hashing for fast and accurate detection.
 SCENE_DETECT_COMMAND = 'detect-hash'
 
-# Video encoding settings
-VIDEO_CODEC = "libx264"
-VIDEO_PRESET = "fast"
-VIDEO_CRF = "18"
-AUDIO_CODEC = "aac"
-AUDIO_BITRATE = "128k"
+# ============================================================================
+# SUPPORTED VIDEO FORMATS
+# ============================================================================
 
+# Comprehensive list of supported video formats
+SUPPORTED_VIDEO_FORMATS = {
+    # Common formats
+    '.mp4': 'MPEG-4 Video',
+    '.avi': 'Audio Video Interleave',
+    '.mov': 'QuickTime Movie',
+    '.mkv': 'Matroska Video',
+    '.webm': 'WebM Video',
+    '.flv': 'Flash Video',
+    '.wmv': 'Windows Media Video',
+    '.m4v': 'iTunes Video',
+    '.mpg': 'MPEG Video',
+    '.mpeg': 'MPEG Video',
+    '.3gp': '3GPP Video',
+    '.3g2': '3GPP2 Video',
+    '.ogv': 'Ogg Video',
+    '.vob': 'DVD Video Object',
+    '.ts': 'MPEG Transport Stream',
+    '.mts': 'AVCHD Video',
+    '.m2ts': 'Blu-ray Video',
+    '.f4v': 'Flash MP4 Video',
+    '.asf': 'Advanced Systems Format',
+    '.rm': 'RealMedia',
+    '.rmvb': 'RealMedia Variable Bitrate',
+    '.divx': 'DivX Video',
+    '.dv': 'Digital Video',
+}
 
 # ============================================================================
 # VIDEO FORMAT DETECTION AND VALIDATION
 # ============================================================================
 
 def get_video_format_info(video_path: str) -> Dict[str, any]:
-    """
-    Get detailed information about video format and codec.
-    
-    Args:
-        video_path: Path to video file
-        
-    Returns:
-        Dictionary with video format information
-    """
     info = {
         'extension': '',
         'format_name': 'Unknown',
@@ -180,15 +188,6 @@ def get_video_format_info(video_path: str) -> Dict[str, any]:
         return info
 
 def validate_video_format(video_path: str) -> Tuple[bool, str]:
-    """
-    Validate if video format is supported and readable.
-    
-    Args:
-        video_path: Path to video file
-        
-    Returns:
-        Tuple of (is_valid, message)
-    """
     try:
         # Check file exists
         if not os.path.exists(video_path):
@@ -237,16 +236,6 @@ def validate_video_format(video_path: str) -> Tuple[bool, str]:
         return False, f"Video validation failed: {str(e)}"
 
 def convert_video_if_needed(video_path: str, output_dir: str) -> Tuple[str, bool]:
-    """
-    Convert video to MP4 if format is problematic.
-    
-    Args:
-        video_path: Input video path
-        output_dir: Output directory
-        
-    Returns:
-        Tuple of (video_path, was_converted)
-    """
     try:
         info = get_video_format_info(video_path)
         
@@ -305,74 +294,16 @@ def convert_video_if_needed(video_path: str, output_dir: str) -> Tuple[str, bool
         return video_path, False
 
 # ============================================================================
-# LOGGING SETUP
-# ============================================================================
-
-# def setup_logging(output_dir: str) -> logging.Logger:
-#     """
-#     Configure logging for the application with both file and console handlers.
-    
-#     Args:
-#         output_dir: Directory where log file will be stored
-        
-#     Returns:
-#         Configured logger instance
-#     """
-#     try:
-#         os.makedirs(output_dir, exist_ok=True)
-        
-#         # Create logger
-#         logger = logging.getLogger("SceneDetector")
-#         logger.setLevel(logging.DEBUG)
-        
-#         # Remove existing handlers to avoid duplicates
-#         logger.handlers.clear()
-        
-#         # File handler - detailed logs
-#         file_handler = logging.FileHandler(
-#             os.path.join(output_dir, "processing_log.txt"),
-#             mode='w',
-#             encoding='utf-8'
-#         )
-#         file_handler.setLevel(logging.DEBUG)
-#         file_formatter = logging.Formatter(
-#             '%(asctime)s - %(levelname)s - %(funcName)s - %(message)s',
-#             datefmt='%Y-%m-%d %H:%M:%S'
-#         )
-#         file_handler.setFormatter(file_formatter)
-        
-#         # Console handler - important messages only
-#         console_handler = logging.StreamHandler(sys.stdout)
-#         console_handler.setLevel(logging.INFO)
-#         console_formatter = logging.Formatter('%(levelname)s: %(message)s')
-#         console_handler.setFormatter(console_formatter)
-        
-#         # Add handlers
-#         logger.addHandler(file_handler)
-#         logger.addHandler(console_handler)
-        
-#         return logger
-        
-#     except Exception as e:
-#         print(f"Failed to setup logging: {e}")
-#         raise
-
-# # Initialize logger
-# logger = setup_logging(OUTPUT_DIR)
-
-# ============================================================================
 # CLIP MODEL SETUP
 # ============================================================================
 
 def load_clip_model() -> Tuple[Optional[CLIPModel], Optional[CLIPProcessor]]:
-    """
-    Load CLIP model and processor for semantic scene detection.
-    
-    Returns:
-        Tuple of (model, processor) or (None, None) if loading fails
-    """
     try:
         print("Loading CLIP model...")
+        # device = "cuda" if torch.cuda.is_available() else "cpu"
+        # print("Using device:", device)
+        # model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
+
         model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
         processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
         print("CLIP model loaded successfully")
@@ -390,21 +321,13 @@ CLIP_MODEL, CLIP_PROCESSOR = load_clip_model()
 # ============================================================================
 
 def get_features(img_path: str) -> Optional[torch.Tensor]:
-    """
-    Extract CLIP features from an image.
-    
-    Args:
-        img_path: Path to the image file
-        
-    Returns:
-        Normalized feature tensor or None if extraction fails
-    """
     try:
         if CLIP_MODEL is None or CLIP_PROCESSOR is None:
             return None
             
         image = Image.open(img_path).convert("RGB")
         inputs = CLIP_PROCESSOR(images=image, return_tensors="pt")
+        # inputs = CLIP_PROCESSOR(images=image, return_tensors="pt").to(DEVICE)
         
         with torch.no_grad():
             features = CLIP_MODEL.get_image_features(**inputs)
@@ -417,16 +340,6 @@ def get_features(img_path: str) -> Optional[torch.Tensor]:
         return None
 
 def cosine_similarity(a: torch.Tensor, b: torch.Tensor) -> float:
-    """
-    Calculate cosine similarity between two tensors.
-    
-    Args:
-        a: First tensor
-        b: Second tensor
-        
-    Returns:
-        Cosine similarity score
-    """
     try:
         return torch.dot(a, b).item()
     except Exception as e:
@@ -438,16 +351,6 @@ def cosine_similarity(a: torch.Tensor, b: torch.Tensor) -> float:
 # ============================================================================
 
 def run_scenedetect(video_path: str, output_dir: str) -> Optional[str]:
-    """
-    Run PySceneDetect to split video and generate scene CSV.
-    
-    Args:
-        video_path: Path to input video file
-        output_dir: Directory for output files
-        
-    Returns:
-        Path to images directory or None if operation fails
-    """
     try:
         images_dir = os.path.join(output_dir, "scenes_images")
         video_dir = os.path.join(output_dir, "scenes_videos")
@@ -462,7 +365,7 @@ def run_scenedetect(video_path: str, output_dir: str) -> Optional[str]:
             [
                 "scenedetect", "-i", video_path,
                 "--output", video_dir,
-                "detect-hash",
+                SCENE_DETECT_COMMAND,
                 "split-video"
             ],
             check=True,
@@ -478,7 +381,7 @@ def run_scenedetect(video_path: str, output_dir: str) -> Optional[str]:
             [
                 "scenedetect", "-i", video_path,
                 "--output", images_dir,
-                "detect-hash",
+                SCENE_DETECT_COMMAND,
                 "list-scenes"
             ],
             check=True,
@@ -504,16 +407,6 @@ def run_scenedetect(video_path: str, output_dir: str) -> Optional[str]:
 # ============================================================================
 
 def calculate_histogram_similarity(img1: np.ndarray, img2: np.ndarray) -> float:
-    """
-    Calculate color histogram similarity using correlation method.
-    
-    Args:
-        img1: First image array (BGR)
-        img2: Second image array (BGR)
-        
-    Returns:
-        Similarity score between 0 and 1
-    """
     try:
         # Convert to HSV color space for better color comparison
         hsv1 = cv2.cvtColor(img1, cv2.COLOR_BGR2HSV)
@@ -539,17 +432,6 @@ def calculate_histogram_similarity(img1: np.ndarray, img2: np.ndarray) -> float:
         return 0.0
 
 def calculate_structural_similarity(img1: np.ndarray, img2: np.ndarray) -> float:
-    """
-    Calculate structural similarity using PSNR-based metric.
-    Detects layout and composition changes.
-    
-    Args:
-        img1: First image array (BGR)
-        img2: Second image array (BGR)
-        
-    Returns:
-        Similarity score between 0 and 1
-    """
     try:
         # Resize for faster computation
         img1_small = cv2.resize(img1, (320, 240))
@@ -577,17 +459,6 @@ def calculate_structural_similarity(img1: np.ndarray, img2: np.ndarray) -> float
         return 0.0
 
 def calculate_edge_similarity(img1: np.ndarray, img2: np.ndarray) -> float:
-    """
-    Calculate edge detection similarity using Canny edge detector.
-    Detects composition and object boundary changes.
-    
-    Args:
-        img1: First image array (BGR)
-        img2: Second image array (BGR)
-        
-    Returns:
-        Similarity score between 0 and 1 (IoU of edges)
-    """
     try:
         # Resize for faster computation
         img1_small = cv2.resize(img1, (320, 240))
@@ -622,17 +493,6 @@ def detect_subscenes_advanced(
     frames_data: List[Dict], 
     min_duration: float = MIN_SUBSCENE_DURATION
 ) -> List[Tuple[int, int]]:
-    """
-    Advanced sub-scene detection using multiple similarity metrics.
-    Combines histogram, structural, and edge similarity with look-ahead confirmation.
-    
-    Args:
-        frames_data: List of frame dictionaries with 'image', 'timestamp', etc.
-        min_duration: Minimum duration for a valid sub-scene (seconds)
-        
-    Returns:
-        List of (start_index, end_index) tuples for each sub-scene
-    """
     try:
         if len(frames_data) < 2:
             print("Not enough frames for subscene detection")
@@ -710,7 +570,7 @@ def detect_subscenes_advanced(
                             # If future frames are also different, might be transition effect
                             if future_hist_sim < 0.70:
                                 confirmed = False
-                                print(f"Potential transition at {sim['timestamp']:.2f}s - not confirmed")
+                                # print(f"Potential transition at {sim['timestamp']:.2f}s - not confirmed")
                         except Exception as e:
                             print(f"Error in look-ahead confirmation: {e}")
                     
@@ -743,7 +603,7 @@ def detect_subscenes_advanced(
                 merged_subscenes.append((start, end))
         
         final_subscenes = merged_subscenes if merged_subscenes else subscenes
-        print(f"Detected {len(final_subscenes)} sub-scenes")
+        # print(f"Detected {len(final_subscenes)} sub-scenes")
         
         return final_subscenes
         
@@ -761,23 +621,12 @@ def extract_and_analyze_images(
     output_dir: str, 
     interval_seconds: float = EXTRACT_INTERVAL_SECONDS
 ) -> List[Dict]:
-    """
-    Extract images from video and detect sub-scenes with advanced analysis.
-    
-    Args:
-        video_path: Path to input video
-        output_dir: Output directory for images
-        interval_seconds: Time interval between extracted frames
-        
-    Returns:
-        List of sub-scene information dictionaries
-    """
     try:
         base_name = os.path.splitext(os.path.basename(video_path))[0]
         images_dir = os.path.join(output_dir, "scenes_images")
-        subscenes_dir = os.path.join(output_dir, "subscenes_videos")
+        # subscenes_dir = os.path.join(output_dir, "subscenes_videos")
         
-        os.makedirs(subscenes_dir, exist_ok=True)
+        # os.makedirs(subscenes_dir, exist_ok=True)
         
         csv_path = os.path.join(images_dir, f"{base_name}-Scenes.csv")
         
@@ -827,7 +676,7 @@ def extract_and_analyze_images(
                 end_time = float(scene["End Time (seconds)"])
                 scene_duration = float(scene["Length (seconds)"])
                 
-                print(f"Processing Scene {scene_idx:03d}: {scene_duration:.2f}s")
+                print(f"-----------------------------------------\nProcessing Scene {scene_idx:03d}: {scene_duration:.2f}s")
                 
                 # Calculate number of images to extract
                 num_images = max(
@@ -920,105 +769,10 @@ def extract_and_analyze_images(
         return []
 
 # ============================================================================
-# VIDEO CREATION
-# ============================================================================
-
-def create_subscene_videos(
-    video_path: str, 
-    output_dir: str, 
-    base_name: str, 
-    subscenes_info: List[Dict]
-) -> bool:
-    """
-    Create sub-scene video clips from original video using FFmpeg.
-    
-    Args:
-        video_path: Path to original video
-        output_dir: Output directory
-        base_name: Base name for output files
-        subscenes_info: List of sub-scene information
-        
-    Returns:
-        True if all videos created successfully, False otherwise
-    """
-    try:
-        subscenes_dir = os.path.join(output_dir, "subscenes_videos")
-        os.makedirs(subscenes_dir, exist_ok=True)
-        
-        success_count = 0
-        total_count = len(subscenes_info)
-        
-        print(f"Creating {total_count} sub-scene videos...")
-
-        for sub in subscenes_info:
-            try:
-                scene_num = sub["scene_num"]
-                subscene_num = sub["subscene_num"]
-                start_time = sub["start_time"]
-                end_time = sub["end_time"]
-                duration = end_time - start_time
-
-                output_video = os.path.join(
-                    subscenes_dir,
-                    f"{base_name}-Scene-{scene_num:03d}-Sub-{subscene_num:02d}.mp4"
-                )
-
-                # FFmpeg command for accurate video cutting with re-encoding
-                cmd = [
-                    "ffmpeg",
-                    "-y",  # Overwrite output files
-                    "-ss", f"{start_time}",  # Seek to start time
-                    "-i", video_path,  # Input file
-                    "-t", f"{duration}",  # Duration
-                    "-c:v", VIDEO_CODEC,  # Video codec
-                    "-preset", VIDEO_PRESET,  # Encoding preset
-                    "-crf", VIDEO_CRF,  # Quality level
-                    "-c:a", AUDIO_CODEC,  # Audio codec
-                    "-b:a", AUDIO_BITRATE,  # Audio bitrate
-                    output_video
-                ]
-
-                print(f"Creating: {os.path.basename(output_video)}")
-                
-                result = subprocess.run(
-                    cmd, 
-                    stdout=subprocess.DEVNULL, 
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    timeout=300  # 5 minute timeout per video
-                )
-                
-                if result.returncode == 0 and os.path.exists(output_video):
-                    success_count += 1
-                else:
-                    print(f"FFmpeg failed for {output_video}: {result.stderr}")
-                    
-            except subprocess.TimeoutExpired:
-                print(f"FFmpeg timeout for scene {scene_num} sub {subscene_num}")
-            except Exception as e:
-                print(f"Failed to create video for scene {scene_num} sub {subscene_num}: {e}")
-        
-        print(f"Created {success_count}/{total_count} sub-scene videos")
-        return success_count == total_count
-        
-    except Exception as e:
-        print(f"Critical error in create_subscene_videos: {e}")
-        return False
-
-# ============================================================================
 # FILE RENAMING
 # ============================================================================
 
 def format_timestamp(seconds: float) -> str:
-    """
-    Convert seconds to HH-MM-SS.mmm timestamp format.
-    
-    Args:
-        seconds: Time in seconds
-        
-    Returns:
-        Formatted timestamp string
-    """
     try:
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
@@ -1034,20 +788,9 @@ def rename_subscene_files(
     base_name: str, 
     subscenes_info: List[Dict]
 ) -> bool:
-    """
-    Rename sub-scene files with timestamps for better organization.
-    
-    Args:
-        output_dir: Output directory
-        base_name: Base name for files
-        subscenes_info: List of sub-scene information
-        
-    Returns:
-        True if all renames successful, False otherwise
-    """
     try:
         images_dir = os.path.join(output_dir, "scenes_images")
-        subscenes_dir = os.path.join(output_dir, "subscenes_videos")
+        # subscenes_dir = os.path.join(output_dir, "subscenes_videos")
         
         print("Renaming files with timestamps...")
         
@@ -1058,30 +801,7 @@ def rename_subscene_files(
             try:
                 scene_num = sub_info['scene_num']
                 subscene_num = sub_info['subscene_num']
-                start_tc = format_timestamp(sub_info['start_time'])
-                end_tc = format_timestamp(sub_info['end_time'])
-                
-                # Rename video file
-                # old_video = os.path.join(
-                #     subscenes_dir,
-                #     f"{base_name}-Scene-{scene_num:03d}-Sub-{subscene_num:02d}.mp4"
-                # )
-                # new_video = os.path.join(
-                #     subscenes_dir,
-                #     f"{base_name}-Scene-{scene_num:03d}-Sub-{subscene_num:02d}_{start_tc}_to_{end_tc}.mp4"
-                # )
-                
-                # total_operations += 1
-                # if os.path.exists(old_video):
-                #     try:
-                #         os.rename(old_video, new_video)
-                #         success_count += 1
-                #         print(f"Renamed video: {os.path.basename(new_video)}")
-                #     except Exception as e:
-                #         print(f"Failed to rename video {old_video}: {e}")
-                # else:
-                #     print(f"Video file not found: {old_video}")
-                
+
                 # Rename image files
                 for i, frame_data in enumerate(sub_info['frames'], start=1):
                     timestamp = format_timestamp(frame_data['timestamp'])
@@ -1119,15 +839,6 @@ def rename_subscene_files(
 # ============================================================================
 
 def detect_subscenes_with_clip(images_dir: str) -> Optional[Dict[int, List[str]]]:
-    """
-    Detect sub-scenes using CLIP model for semantic similarity.
-    
-    Args:
-        images_dir: Directory containing extracted images
-        
-    Returns:
-        Dictionary mapping subscene IDs to lists of image paths, or None if failed
-    """
     try:
         if CLIP_MODEL is None or CLIP_PROCESSOR is None:
             print("CLIP model not available, skipping CLIP-based detection")
@@ -1164,13 +875,13 @@ def detect_subscenes_with_clip(images_dir: str) -> Optional[Dict[int, List[str]]
 
         for i in range(1, len(embeddings)):
             sim = cosine_similarity(embeddings[i-1], embeddings[i])
-            print(f"CLIP similarity {i}: {sim:.4f}")
+            # print(f"CLIP similarity {i}: {sim:.4f}")
 
             # If similarity drops below threshold, start new subscene
             if sim < CLIP_SIMILARITY_THRESHOLD: 
                 subscene_id += 1
                 subscenes[subscene_id] = []
-                print(f"New sub-scene detected at image {i} (similarity: {sim:.4f})")
+                # print(f"New sub-scene detected at image {i} (similarity: {sim:.4f})")
 
             subscenes[subscene_id].append(image_paths[i])
 
@@ -1226,16 +937,6 @@ def save_subscenes(subscenes, output_dir):
 # ============================================================================
 
 def move_files_and_remove_subfolders(parent_folder: str) -> bool:
-    """
-    Move all files from subfolders to parent folder and remove empty subfolders.
-    Skips duplicate files to avoid overwriting.
-    
-    Args:
-        parent_folder: Parent directory to consolidate files into
-        
-    Returns:
-        True if operation completed successfully, False otherwise
-    """
     try:
         if not os.path.exists(parent_folder):
             print(f"Parent folder does not exist: {parent_folder}")
@@ -1264,7 +965,7 @@ def move_files_and_remove_subfolders(parent_folder: str) -> bool:
                         continue
 
                     shutil.move(src, dst)
-                    print(f"Moved: {file}")
+                    # print(f"Moved: {file}")
                     moved_count += 1
                     
                 except Exception as e:
@@ -1280,7 +981,7 @@ def move_files_and_remove_subfolders(parent_folder: str) -> bool:
             try:
                 if not os.listdir(root):  # Folder is empty
                     os.rmdir(root)
-                    print(f"Removed empty folder: {os.path.basename(root)}")
+                    # print(f"Removed empty folder: {os.path.basename(root)}")
                     removed_count += 1
             except Exception as e:
                 print(f"Failed to remove folder {root}: {e}")
@@ -1300,15 +1001,6 @@ def move_files_and_remove_subfolders(parent_folder: str) -> bool:
 # ============================================================================
 
 def validate_input_video(video_path: str) -> bool:
-    """
-    Validate input video file exists and is readable.
-    
-    Args:
-        video_path: Path to video file
-        
-    Returns:
-        True if video is valid, False otherwise
-    """
     try:
         if not os.path.exists(video_path):
             print(f"Video file does not exist: {video_path}")
@@ -1344,6 +1036,123 @@ def validate_input_video(video_path: str) -> bool:
 # MAIN EXECUTION
 # ============================================================================
 
+# def main():
+#     """Main execution function with comprehensive error handling."""
+    
+#     try:
+#         start_time = time.time()
+        
+#         print("=" * 70)
+#         print("ADVANCED SCENE SUBDIVISION SYSTEM")
+#         print("=" * 70)
+#         print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+#         print(f"Video: {VIDEO_PATH}")
+#         print(f"Output: {OUTPUT_DIR}")
+        
+#         # Step 0: Validate environment
+#         print("\n" + "=" * 70)
+#         print("STEP 0: VALIDATION")
+#         print("=" * 70)
+        
+#         if not validate_input_video(VIDEO_PATH):
+#             print("Input video validation failed. Aborting.")
+#             return False
+        
+#         # Step 1: Scene detection
+#         print("\n" + "=" * 70)
+#         print("STEP 1: SCENE DETECTION")
+#         print("=" * 70)
+#         scene_start_time = time.time()
+#         images_dir = run_scenedetect(VIDEO_PATH, OUTPUT_DIR)
+#         if images_dir is None:
+#             print("Scene detection failed. Aborting.")
+#             return False
+        
+#         print(f"Scene detection completed. Images directory: {images_dir}")
+#         scene_end_time = time.time()
+#         # Step 2: Extract images and detect sub-scenes
+#         print("\n" + "=" * 70)
+#         print("STEP 2: IMAGE EXTRACTION AND SUB-SCENE DETECTION")
+#         print("=" * 70)
+#         image_start_time = time.time()
+#         subscenes_info = extract_and_analyze_images(
+#             VIDEO_PATH, 
+#             OUTPUT_DIR, 
+#             EXTRACT_INTERVAL_SECONDS
+#         )
+        
+#         if not subscenes_info:
+#             print("No sub-scenes detected. Aborting.")
+#             return False
+        
+#         print(f"Detected {len(subscenes_info)} sub-scenes")
+#         image_end_time = time.time()
+#         # Step 3: Create sub-scene videos
+#         print("\n" + "=" * 70)
+#         print("STEP 3: VIDEO CREATION")
+#         print("=" * 70)
+        
+#         video_name = os.path.splitext(os.path.basename(VIDEO_PATH))[0]
+        
+#         # Step 4: Rename files with timestamps
+#         print("\n" + "=" * 70)
+#         print("STEP 4: FILE RENAMING")
+#         print("=" * 70)
+
+#         rename_start_time = time.time()
+#         if not rename_subscene_files(OUTPUT_DIR, video_name, subscenes_info):
+#             print("Some files failed to rename, but continuing...")
+#         rename_end_time = time.time()
+#         # Step 5: CLIP-based detection (optional)
+#         print("\n" + "=" * 70)
+#         print("STEP 5: CLIP-BASED SCENE DETECTION")
+#         print("=" * 70)
+#         clip_start_time = time.time()
+#         if CLIP_MODEL is not None:
+#             subscenes = detect_subscenes_with_clip(images_dir)
+            
+#             if subscenes:
+#                 final_scene_dir = save_subscenes(subscenes, OUTPUT_DIR)
+                
+#                 if final_scene_dir:
+#                     if not move_files_and_remove_subfolders(final_scene_dir):
+#                         print("File organization had issues, but continuing...")
+#                 else:
+#                     print("Failed to save CLIP subscenes, but continuing...")
+#             else:
+#                 print("CLIP detection failed, but basic detection completed")
+#         else:
+#             print("CLIP model not available, skipping semantic detection")
+#         print(f"Clip Total Time :- {time.time() - clip_start_time}")
+#         print(f"scene detect Total Time :- { scene_end_time - scene_start_time}")
+#         print(f"image Total Time :- { image_end_time - image_start_time}")
+#         print(f"rename Total Time :- {rename_end_time - rename_start_time}")
+#         if os.path.exists(images_dir):
+#             shutil.rmtree(images_dir)
+            
+#         scene_images = os.path.join(OUTPUT_DIR, "scenes_images")
+#         os.rename(final_scene_dir, scene_images)
+
+#         end_time = time.time()
+#         total_time = end_time - start_time
+        
+#         print("\n" + "=" * 70)
+#         print("PROCESSING COMPLETE")
+#         print("=" * 70)
+#         print(f"Total processing time: {total_time:.2f} seconds ({total_time/60:.2f} minutes)")
+#         print(f"End time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                
+#         print("All operations completed successfully!")
+#         return True
+        
+#     except KeyboardInterrupt:
+#         print("\nProcessing interrupted by user")
+#         return False
+#     except Exception as e:
+#         print(f"Unexpected error in main: {e}", exc_info=True)
+#         return False
+
+
 def main():
     """Main execution function with comprehensive error handling."""
     
@@ -1351,73 +1160,118 @@ def main():
         start_time = time.time()
         
         print("=" * 70)
-        print("ADVANCED SCENE SUBDIVISION SYSTEM - PRODUCTION VERSION")
+        print("ADVANCED SCENE SUBDIVISION SYSTEM")
         print("=" * 70)
         print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Video: {VIDEO_PATH}")
         print(f"Output: {OUTPUT_DIR}")
-        
-        # Step 0: Validate environment
+
+        # =====================================================================
+        # STEP 1: VIDEO FORMAT VALIDATION (NEW)
+        # =====================================================================
         print("\n" + "=" * 70)
-        print("STEP 0: VALIDATION")
+        print("STEP 1: VIDEO FORMAT CHECK")
         print("=" * 70)
-        
-        if not validate_input_video(VIDEO_PATH):
+
+        ok, msg = validate_video_format(VIDEO_PATH)
+        print(msg)
+
+        if not ok:
+            print("Video format is not ideal. Will attempt conversion.")
+        else:
+            print("Video format looks good.")
+
+        # =====================================================================
+        # STEP 2: VIDEO CONVERSION IF REQUIRED (NEW)
+        # =====================================================================
+        print("\n" + "=" * 70)
+        print("STEP 2: CONVERSION IF REQUIRED")
+        print("=" * 70)
+
+        final_video_path, converted = convert_video_if_needed(VIDEO_PATH, OUTPUT_DIR)
+
+        if converted:
+            print(f"Using converted video: {final_video_path}")
+        else:
+            print("No conversion needed. Proceeding with original video.")
+
+        # IMPORTANT: UPDATE LOCATION FOR REST OF PIPELINE
+        working_video = final_video_path
+
+        # Optional: Print final format info
+        print("\nFINAL VIDEO FORMAT INFO:")
+        info = get_video_format_info(working_video)
+        print(info)
+
+        # =====================================================================
+        # STEP 2.1: BASIC VALIDATION ALREADY IN YOUR CODE
+        # =====================================================================
+        if not validate_input_video(working_video):
             print("Input video validation failed. Aborting.")
             return False
-        
-        # Step 1: Scene detection
+
+        # =====================================================================
+        # STEP 3: SCENE DETECTION
+        # =====================================================================
         print("\n" + "=" * 70)
-        print("STEP 1: SCENE DETECTION")
+        print("STEP 3: SCENE DETECTION")
         print("=" * 70)
-        
-        images_dir = run_scenedetect(VIDEO_PATH, OUTPUT_DIR)
+
+        scene_start_time = time.time()
+        images_dir = run_scenedetect(working_video, OUTPUT_DIR)
+
         if images_dir is None:
             print("Scene detection failed. Aborting.")
             return False
         
         print(f"Scene detection completed. Images directory: {images_dir}")
-        
-        # Step 2: Extract images and detect sub-scenes
+        scene_end_time = time.time()
+
+        # =====================================================================
+        # STEP 4: SUB-SCENE DETECTION
+        # =====================================================================
         print("\n" + "=" * 70)
-        print("STEP 2: IMAGE EXTRACTION AND SUB-SCENE DETECTION")
+        print("STEP 4: IMAGE EXTRACTION AND SUB-SCENE DETECTION")
         print("=" * 70)
-        
+
+        image_start_time = time.time()
         subscenes_info = extract_and_analyze_images(
-            VIDEO_PATH, 
+            working_video, 
             OUTPUT_DIR, 
             EXTRACT_INTERVAL_SECONDS
         )
-        
+
         if not subscenes_info:
             print("No sub-scenes detected. Aborting.")
             return False
         
         print(f"Detected {len(subscenes_info)} sub-scenes")
-        
-        # Step 3: Create sub-scene videos
+        image_end_time = time.time()
+
+        # =====================================================================
+        # STEP 5: RENAME FILES
+        # =====================================================================
         print("\n" + "=" * 70)
-        print("STEP 3: VIDEO CREATION")
+        print("STEP 5: FILE RENAMING")
         print("=" * 70)
-        
-        video_name = os.path.splitext(os.path.basename(VIDEO_PATH))[0]
-        
-        # if not create_subscene_videos(VIDEO_PATH, OUTPUT_DIR, video_name, subscenes_info):
-        #     print("Some videos failed to create, but continuing...")
-        
-        # Step 4: Rename files with timestamps
-        print("\n" + "=" * 70)
-        print("STEP 4: FILE RENAMING")
-        print("=" * 70)
-        
+
+        rename_start_time = time.time()
+        video_name = os.path.splitext(os.path.basename(working_video))[0]
+
         if not rename_subscene_files(OUTPUT_DIR, video_name, subscenes_info):
             print("Some files failed to rename, but continuing...")
-        
-        # Step 5: CLIP-based detection (optional)
+
+        rename_end_time = time.time()
+
+        # =====================================================================
+        # STEP 6: CLIP DETECTION (OPTIONAL)
+        # =====================================================================
         print("\n" + "=" * 70)
-        print("STEP 5: CLIP-BASED SCENE DETECTION")
+        print("STEP 6: CLIP-BASED SCENE DETECTION")
         print("=" * 70)
-        
+
+        clip_start_time = time.time()
+
         if CLIP_MODEL is not None:
             subscenes = detect_subscenes_with_clip(images_dir)
             
@@ -1434,37 +1288,31 @@ def main():
         else:
             print("CLIP model not available, skipping semantic detection")
 
+        # =====================================================================
+        # PERFORMANCE SUMMARY
+        # =====================================================================
+        print(f"Clip Total Time :- {time.time() - clip_start_time}")
+        print(f"scene detect Total Time :- {scene_end_time - scene_start_time}")
+        print(f"image Total Time :- {image_end_time - image_start_time}")
+        print(f"rename Total Time :- {rename_end_time - rename_start_time}")
+
+        # Cleanup temp folder
         if os.path.exists(images_dir):
             shutil.rmtree(images_dir)
-            
+
+        # Move final scene folder
         scene_images = os.path.join(OUTPUT_DIR, "scenes_images")
         os.rename(final_scene_dir, scene_images)
 
-        # Calculate and save processing time
-        end_time = time.time()
-        total_time = end_time - start_time
-        
+        total_time = time.time() - start_time
+
         print("\n" + "=" * 70)
         print("PROCESSING COMPLETE")
         print("=" * 70)
         print(f"Total processing time: {total_time:.2f} seconds ({total_time/60:.2f} minutes)")
         print(f"End time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        
-        # # Save processing time to file
-        # try:
-        #     with open(TIME_FILE, 'w', encoding='utf-8') as f:
-        #         f.write(f"Processing Time Report\n")
-        #         f.write(f"{'=' * 50}\n")
-        #         f.write(f"Video: {VIDEO_PATH}\n")
-        #         f.write(f"Start: {datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')}\n")
-        #         f.write(f"End: {datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S')}\n")
-        #         f.write(f"Total time: {total_time:.2f} seconds ({total_time/60:.2f} minutes)\n")
-        #         f.write(f"Sub-scenes detected: {len(subscenes_info)}\n")
-        #     print(f"Processing time saved to: {TIME_FILE}")
-        # except Exception as e:
-        #     print(f"Failed to save processing time: {e}")
-        
         print("All operations completed successfully!")
+        
         return True
         
     except KeyboardInterrupt:
@@ -1474,6 +1322,7 @@ def main():
         print(f"Unexpected error in main: {e}", exc_info=True)
         return False
 
+
 # ============================================================================
 # ENTRY POINT
 # ============================================================================
@@ -1481,7 +1330,6 @@ def main():
 if __name__ == "__main__":
     try:
         success = main()
-        # sys.exit(0 if success else 1)
     except Exception as e:
         print(f"Fatal error: {e}", exc_info=True)
         sys.exit(1)

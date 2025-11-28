@@ -26,10 +26,9 @@ def load_clip_model(device, video_path) -> Tuple[Optional[CLIPModel], Optional[C
         model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
         processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
         print(f"[{video_path}] CLIP model loaded successfully")
-        return model, processor
+        return model, processor, True
     except Exception as e:
-        print(f"[{video_path}] Failed to load CLIP model: {e}")
-        return None, None
+        return None, None, f"[{video_path}] Failed to load CLIP model: {e}"
 
 # ============================================================================
 # CLIP FEATURE EXTRACTION
@@ -64,63 +63,13 @@ def cosine_similarity(a: torch.Tensor, b: torch.Tensor, video_path) -> float:
 # SCENE DETECTION WITH SCENEDETECT
 # ============================================================================
 
-# def run_scenedetect(video_path: str, output_dir: str, scene_detect_command: str) -> Optional[str]:
-#     try:
-#         images_dir = os.path.join(output_dir, "scenes_images")
-#         video_dir = os.path.join(output_dir, "scenes_videos")
-
-#         def recreate_dir(path):
-#             if os.path.exists(path):
-#                 shutil.rmtree(path)
-#             os.makedirs(path)
-
-#         recreate_dir(images_dir)
-#         recreate_dir(video_dir)
-        
-#         # Split video into scenes
-#         result = subprocess.run(
-#             [
-#                 "scenedetect", "-i", video_path,
-#                 "--output", video_dir,
-#                 scene_detect_command,
-#                 "split-video"
-#             ],
-#             check=True,
-#             capture_output=True,
-#             text=True
-#         )
-#         print(f"[{video_path}] Scene split output: {result.stdout}")
-        
-#         # Generate scene list CSV
-#         result = subprocess.run(
-#             [
-#                 "scenedetect", "-i", video_path,
-#                 "--output", images_dir,
-#                 scene_detect_command,
-#                 "list-scenes"
-#             ],
-#             check=True,
-#             capture_output=True,
-#             text=True
-#         )
-#         print(f"[{video_path}] Scene list output: {result.stdout}")
-
-#         return images_dir
-        
-#     except subprocess.CalledProcessError as e:
-#         print(f"[{video_path}] Scenedetect command failed: {e.stderr}")
-#         return None
-#     except FileNotFoundError:
-#         print(f"[{video_path}] Scenedetect not found. Please install: pip install scenedetect[opencv]")
-#         return None
-#     except Exception as e:
-#         print(f"[{video_path}] Unexpected error in run_scenedetect: {e}")
-#         return None
-
 def run_scenedetect(video_path: str, output_dir: str, scene_detect_command: str) -> Optional[str]:
     try:
         images_dir = os.path.join(output_dir, "scenes_images")
         video_dir = os.path.join(output_dir, "scenes_videos")
+
+        if scene_detect_command not in ['detect-content', 'detect-threshold', 'detect-hist', 'detect-adaptive', 'detect-hash']:
+            return None, f"[{video_path}] Invalid scene detection command: {scene_detect_command}"
  
         def recreate_dir(path):
             if os.path.exists(path):
@@ -166,17 +115,14 @@ def run_scenedetect(video_path: str, output_dir: str, scene_detect_command: str)
             text = chunk.decode("utf-8", errors="ignore")
             print(f"[{video_path}] Scene list output: {text}")
  
-        return images_dir
+        return images_dir, True
        
     except subprocess.CalledProcessError as e:
-        print(f"[{video_path}] Scenedetect command failed: {e.stderr}")
-        return None
+        return None, f"[{video_path}] Scenedetect command failed: {e.stderr}"
     except FileNotFoundError:
-        print(f"[{video_path}] Scenedetect not found. Please install: pip install scenedetect[opencv]")
-        return None
+        return None, f"[{video_path}] Scenedetect not found. Please install: pip install scenedetect[opencv]"
     except Exception as e:
-        print(f"[{video_path}] Unexpected error in run_scenedetect: {e}")
-        return None
+        return None, f"[{video_path}] Unexpected error in run_scenedetect: {e}"
 
 # ============================================================================
 # IMAGE SIMILARITY CALCULATIONS
@@ -408,29 +354,26 @@ def extract_and_analyze_images(
         
         # Validate CSV exists
         if not os.path.exists(csv_path):
-            print(f"[{video_path}] Scene CSV not found: {csv_path}")
-            return []
+            return [], f"[{video_path}] Scene CSV not found: {csv_path}"
         
         # Read scene CSV
         try:
             with open(csv_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
                 if len(lines) < 2:
-                    return []
+                    return [], f"[{video_path}] Scene CSV is empty or invalid: {csv_path}"
                     
                 cleaned_csv = lines[1:]  # Skip header comment line
                 reader = csv.DictReader(cleaned_csv)
                 scenes = list(reader)
                 
         except Exception as e:
-            print(f"[{video_path}] Failed to read scene CSV: {e}")
-            return []
+            return [], f"[{video_path}] Failed to read scene CSV: {e}"
         
         # Open video
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            print(f"[{video_path}] Failed to open video: {video_path}")
-            return []
+            return [], f"[{video_path}] Failed to open video: {video_path}"
         
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -523,11 +466,10 @@ def extract_and_analyze_images(
                 continue
         
         cap.release()
-        return all_subscenes_info
+        return all_subscenes_info, True
         
     except Exception as e:
-        print(f"[{video_path}] Critical error in extract_and_analyze_images: {e}")
-        return []
+        return [], f"[{video_path}] Critical error in extract_and_analyze_images: {e}"
 
 # ============================================================================
 # FILE RENAMING
@@ -590,8 +532,7 @@ def rename_subscene_files(
         return success_count == total_operations
         
     except Exception as e:
-        print(f"[{video_path}] Critical error in rename_subscene_files: {e}")
-        return False
+        return f"[{video_path}] Critical error in rename_subscene_files: {e}"
 
 # ============================================================================
 # CLIP-BASED SUBSCENE DETECTION
@@ -696,8 +637,7 @@ def save_subscenes(subscenes, output_dir, video_path):
 def move_files_and_remove_subfolders(parent_folder: str, video_path) -> bool:
     try:
         if not os.path.exists(parent_folder):
-            print(f"[{video_path}] Parent folder does not exist: {parent_folder}")
-            return False
+            return f"[{video_path}] Parent folder does not exist: {parent_folder}"
         
         print(f"[{video_path}] Moving files from subfolders to parent directory...")
         
@@ -746,8 +686,7 @@ def move_files_and_remove_subfolders(parent_folder: str, video_path) -> bool:
         return True
         
     except Exception as e:
-        print(f"[{video_path}] Critical error in move_files_and_remove_subfolders: {e}")
-        return False
+        return f"[{video_path}] Critical error in move_files_and_remove_subfolders: {e}"
 
 # ============================================================================
 # MAIN EXECUTION
@@ -799,17 +738,16 @@ def main(video_path, output_path) -> bool:
 
     try:
         # Load CLIP model
-        clip_model, clip_processor = load_clip_model(device, video_path)
+        clip_model, clip_processor, status_msg = load_clip_model(device, video_path)
         
-        images_dir = run_scenedetect(video_path, output_path, scene_detect_command)
+        images_dir, error_msg = run_scenedetect(video_path, output_path, scene_detect_command)
 
         if images_dir is None:
-            print(f"[{video_path}] Scene detection failed. Aborting.")
-            return False
+            return error_msg
         
         print(f"[{video_path}] Scene detection completed. Images directory: {images_dir}")
 
-        subscenes_info = extract_and_analyze_images(
+        subscenes_info, subscenes_status_msg = extract_and_analyze_images(
             video_path, 
             output_path, 
             extract_interval_seconds,
@@ -822,8 +760,7 @@ def main(video_path, output_path) -> bool:
         )
 
         if not subscenes_info:
-            print(f"[{video_path}] No sub-scenes detected. Aborting.")
-            return False
+            return subscenes_status_msg
 
         video_name = os.path.splitext(os.path.basename(video_path))[0]
 
@@ -857,8 +794,7 @@ def main(video_path, output_path) -> bool:
         return True
 
     except Exception as e:
-        print(f"[{video_path}] Unexpected error in main: {e}")
-        return False
+        return f"[{video_path}] Unexpected error in main: {e}"
 
 # ============================================================================
 # ENTRY POINT
@@ -867,9 +803,10 @@ def main(video_path, output_path) -> bool:
 if __name__ == "__main__":
     try:
         # File paths
-        video_path = r"D:\SDNA\Scene_Detector\scene_detection_samples\cristiano_ronaldo\free_kick\Cristiano_Ronaldos_Free_Kick.mp4"
-        output_path = r"D:\SDNA\Scene_Detector\scene_detection_samples\cristiano_ronaldo\test"
+        video_path = r"D:\SDNA\Scene_Detector\scene_subdivision\Mard\mard.mp4"
+        output_path = r"D:\SDNA\Scene_Detector\final_op\Mard"
         success = main(video_path, output_path)
+        print(success)
     except Exception as e:
         print(f"Fatal error: {e}", exc_info=True)
         sys.exit(1)

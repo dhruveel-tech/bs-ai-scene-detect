@@ -8,6 +8,7 @@ from typing import List, Dict, Tuple, Optional
 from datetime import datetime
 from pathlib import Path
 import re
+import gc
 
 import cv2
 import numpy as np
@@ -29,6 +30,59 @@ def load_clip_model(device, video_path) -> Tuple[Optional[CLIPModel], Optional[C
         return model, processor, True
     except Exception as e:
         return None, None, f"[{video_path}] Failed to load CLIP model: {e}"
+
+# def load_clip_model(device, video_path):
+#     try:
+#         model = CLIPModel.from_pretrained(
+#             "openai/clip-vit-base-patch32",
+#             device_map=None  # do NOT use auto or meta
+#         )
+#         model = model.to(device)  # safe now
+#         processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+
+#         print(f"[{video_path}] CLIP model loaded successfully")
+#         return model, processor, True
+
+#     except Exception as e:
+#         return None, None, f"[{video_path}] Failed to load CLIP model: {e}"
+
+# MODEL_CACHE = {}
+# MODEL_LOCK = threading.Lock()
+
+# def load_clip_model(device, video_path) -> Tuple[Optional[CLIPModel], Optional[CLIPProcessor]]:
+#     global MODEL_CACHE, MODEL_LOCK
+    
+#     try:
+#         # Check if model is already loaded
+#         with MODEL_LOCK:
+#             if device in MODEL_CACHE:
+#                 print(f"[{video_path}] Using cached CLIP model for device {device}")
+#                 return MODEL_CACHE[device]['model'], MODEL_CACHE[device]['processor'], True
+        
+#         # Load model (outside of lock to allow parallel CPU operations)
+#         print(f"[{video_path}] Loading CLIP model to device {device}...")
+        
+#         # Load to CPU first, then move to target device
+#         model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+#         processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        
+#         # Move to target device
+#         model = model.to(device)
+#         model.eval()  # Set to evaluation mode
+        
+#         # Cache the model
+#         with MODEL_LOCK:
+#             MODEL_CACHE[device] = {
+#                 'model': model,
+#                 'processor': processor
+#             }
+        
+#         print(f"[{video_path}] CLIP model loaded successfully to {device}")
+#         return model, processor, True
+        
+#     except Exception as e:
+#         print(f"[{video_path}] Failed to load CLIP model: {e}")
+#         return None, None, f"[{video_path}] Failed to load CLIP model: {e}"
 
 # ============================================================================
 # CLIP FEATURE EXTRACTION
@@ -343,6 +397,7 @@ def extract_and_analyze_images(
     structural_threshold: float,
     edge_threshold: float
 ) -> List[Dict]:
+    cap = None
     try:
         base_name = os.path.splitext(os.path.basename(video_path))[0]
         images_dir = os.path.join(output_dir, "scenes_images")
@@ -444,8 +499,11 @@ def extract_and_analyze_images(
                                 frame_data = frames_data[i]
                                 img_name = f"{base_name}-Scene-{scene_idx:03d}-Sub-{sub_idx:02d}-{i-start_idx+1:02d}.jpg"
                                 img_path = os.path.join(images_dir, img_name)
-                                
-                                cv2.imwrite(img_path, frame_data['image'])
+                                # cv2.imwrite(os.fsdecode(img_path), frame_data['image'])
+                                image_array = np.array(frame_data['image'], dtype=np.uint8)
+                                img = Image.fromarray(image_array, mode='RGB')
+ 
+                                img.save(img_path, format="JPEG")
                             
                             # Store sub-scene info
                             all_subscenes_info.append({
@@ -470,6 +528,11 @@ def extract_and_analyze_images(
         
     except Exception as e:
         return [], f"[{video_path}] Critical error in extract_and_analyze_images: {e}"
+    
+    finally:
+        if cap is not None:
+            cap.release()
+            print(f"[{video_path}] Video capture released")
 
 # ============================================================================
 # FILE RENAMING
@@ -689,6 +752,32 @@ def move_files_and_remove_subfolders(parent_folder: str, video_path) -> bool:
         return f"[{video_path}] Critical error in move_files_and_remove_subfolders: {e}"
 
 # ============================================================================
+# Cleanup Resources
+# ============================================================================
+
+def cleanup_resources(clip_model, clip_processor):
+    try:
+        # Delete CLIP model and processor
+        if clip_model is not None:
+            del clip_model
+        if clip_processor is not None:
+            del clip_processor
+        
+        # Clear CUDA cache if using GPU
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        
+        # Force garbage collection
+        gc.collect()
+        
+        print("✓ All resources cleaned up successfully")
+        return True
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
+        return False
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
@@ -735,6 +824,10 @@ def main(video_path, output_path) -> bool:
     scene_detect_command = 'detect-hash'
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    final_scene_dir = None
+    clip_model = None
+    clip_processor = None
 
     try:
         # Load CLIP model
@@ -783,18 +876,28 @@ def main(video_path, output_path) -> bool:
         else:
             print(f"[{video_path}] CLIP model not available, skipping semantic detection")
 
-
-        if os.path.exists(images_dir):
-            shutil.rmtree(images_dir)
-
+        # # Move final scene folder
+        # scene_images = os.path.join(output_path, "scenes_images")
+        # os.rename(final_scene_dir, scene_images)
+        
         # Move final scene folder
         scene_images = os.path.join(output_path, "scenes_images")
-        os.rename(final_scene_dir, scene_images)
+
+        if final_scene_dir and os.path.exists(final_scene_dir):
+            if os.path.exists(images_dir):
+                shutil.rmtree(images_dir)
+            os.rename(final_scene_dir, scene_images)
+        else:
+            print(f"[{video_path}] No final scene directory to move.")
        
         return True
 
     except Exception as e:
         return f"[{video_path}] Unexpected error in main: {e}"
+    
+    finally:
+        print(f"[{video_path}] Cleaning up resources...")
+        cleanup_resources(clip_model, clip_processor)
 
 # ============================================================================
 # ENTRY POINT
@@ -803,8 +906,8 @@ def main(video_path, output_path) -> bool:
 if __name__ == "__main__":
     try:
         # File paths
-        video_path = r"D:\SDNA\Scene_Detector\scene_subdivision\Mard\mard.mp4"
-        output_path = r"D:\SDNA\Scene_Detector\final_op\Mard"
+        video_path = r"D:\SDNA\Scene_Detector\Clip #26_Bonefish#5_Big school behind -3.mov"
+        output_path = r"D:\SDNA\Scene_Detector\test"
         success = main(video_path, output_path)
         print(success)
     except Exception as e:

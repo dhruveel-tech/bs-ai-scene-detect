@@ -501,8 +501,12 @@ def extract_and_analyze_images(
                                 img_path = os.path.join(images_dir, img_name)
                                 # cv2.imwrite(os.fsdecode(img_path), frame_data['image'])
                                 image_array = np.array(frame_data['image'], dtype=np.uint8)
-                                img = Image.fromarray(image_array, mode='RGB')
+                                # img = Image.fromarray(image_array, mode='RGB')
  
+                                # img.save(img_path, format="JPEG")
+                                image_array = image_array[:, :, ::-1]
+
+                                img = Image.fromarray(image_array, mode='RGB')
                                 img.save(img_path, format="JPEG")
                             
                             # Store sub-scene info
@@ -557,10 +561,10 @@ def rename_subscene_files(
 ) -> bool:
     try:
         images_dir = os.path.join(output_dir, "scenes_images")
-
+        
         success_count = 0
         total_operations = 0
-        
+        # new_base_name = base_name[:50]  
         for sub_info in subscenes_info:
             try:
                 scene_num = sub_info['scene_num']
@@ -577,7 +581,6 @@ def rename_subscene_files(
                         images_dir,
                         f"{base_name}-Scene-{scene_num:03d}-Sub-{subscene_num:02d}_{timestamp}.jpg"
                     )
-                    
                     total_operations += 1
                     if os.path.exists(old_img):
                         try:
@@ -903,13 +906,59 @@ def main(video_path, output_path) -> bool:
 # ENTRY POINT
 # ============================================================================
 
+# if __name__ == "__main__":
+#     try:
+#         # File paths
+#         video_path = r"D:\SDNA\Scene_Detector\video_chunks\The.Wolf.of.Wall.Street.2013.720p.BluRay.Hindi.5.1-English.ESub.x264-HDHub4u.Ms_chunk_0.mp4"
+#         output_path = r"D:\SDNA\Scene_Detector\test"
+#         success = main(video_path, output_path)
+#         print(success)
+#     except Exception as e:
+#         print(f"Fatal error: {e}", exc_info=True)
+#         sys.exit(1)
+
+VIDEO_EXT = (".mp4", ".mkv", ".mov", ".avi")
+
+def process_directory(input_dir, output_root):
+    if not os.path.isdir(input_dir):
+        raise ValueError(f"Input directory does not exist: {input_dir}")
+
+    os.makedirs(output_root, exist_ok=True)
+
+    files = os.listdir(input_dir)
+    video_files = [f for f in files if f.lower().endswith(VIDEO_EXT)]
+
+    if not video_files:
+        print("No video files found in the directory.")
+        return
+
+    print(f"Found {len(video_files)} video(s) to process.")
+
+    for vid in video_files:
+        video_path = os.path.join(input_dir, vid)
+        base_name = os.path.splitext(vid)[0]
+
+        # Create a dedicated folder for this video
+        output_path = os.path.join(output_root, base_name)
+        os.makedirs(output_path, exist_ok=True)
+
+        print(f"\n>>> Processing: {video_path}")
+        print(f">>> Output Folder: {output_path}")
+
+        try:
+            success = main(video_path, output_path)
+            print(f"   ✔ Completed: {vid} => {success}")
+        except Exception as e:
+            print(f"   ✖ Failed: {vid} | Error: {e}")
+
+
 if __name__ == "__main__":
     try:
-        # File paths
-        video_path = r"D:\SDNA\Scene_Detector\Clip #26_Bonefish#5_Big school behind -3.mov"
-        output_path = r"D:\SDNA\Scene_Detector\test"
-        success = main(video_path, output_path)
-        print(success)
+        input_dir  = r"D:\SDNA\Scene_Detector\test2"
+        output_dir = r"D:\SDNA\Scene_Detector\video_chunks_outputs"
+
+        process_directory(input_dir, output_dir)
+
     except Exception as e:
         print(f"Fatal error: {e}", exc_info=True)
         sys.exit(1)

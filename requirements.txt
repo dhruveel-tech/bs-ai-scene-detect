@@ -8,6 +8,7 @@ scenedetect
 matplotlib
 scikit-image
 moviepy
+av
 
 
 

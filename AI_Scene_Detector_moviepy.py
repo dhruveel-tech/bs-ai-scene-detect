@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 import re
 import gc
+from moviepy.editor import VideoFileClip
 
 import cv2
 import numpy as np
@@ -365,45 +366,73 @@ def extract_and_analyze_images(
             reader = csv.DictReader(cleaned_csv)
             scenes = list(reader)
 
-        # ---- OPEN VIDEO ----
-        container = av.open(video_path)
-        stream = container.streams.video[0]
-        fps = float(stream.average_rate)
+        # ---- OPEN VIDEO WITH MOVIEPY ----
+        clip = VideoFileClip(video_path)
+        fps = clip.fps or 25
 
         print(f"[{video_path}] Extracting frames every {interval_seconds}s")
 
         all_subscenes_info = []
 
-        # ---- FUNCTION: GET EXACT FRAME BY TIME ----
-        def get_frame_at_time(time_sec):
-            """Seek & decode frame accurately without RAM explosion."""
-            tb = stream.time_base
-            num = tb.numerator
-            den = tb.denominator
-            
-            # convert time → pts
-            target_pts = int(time_sec * den / num)
+        # ===============================================================
+        # 🔥 FAST HYBRID FRAME EXTRACTION
+        # ===============================================================
+        def get_frames_batch(start_t, end_t, limit=20):
+            """
+            Extract up to `limit` frames between start_t and end_t.
+            Returns list of RGB frames.
+            """
+            try:
+                duration = end_t - start_t
+                if duration <= 0:
+                    return []
 
-            container.seek(target_pts, any_frame=False, backward=True, stream=stream)
+                batch_fps = min(limit / duration, fps)
 
-            for frame in container.decode(stream):
-                if frame.pts is None:
-                    continue
+                frames = []
+                for frame in clip.iter_frames(fps=batch_fps, dtype="uint8",
+                                              start_time=start_t, end_time=end_t):
+                    frames.append(frame)
+                    if len(frames) >= limit:
+                        break
+                return frames
+            except:
+                return []
 
-                frame_time = float(frame.pts * num / den)
-                if frame_time >= time_sec:
-                    return frame.to_ndarray(format="bgr24")
+        def fast_get_frame(time_sec, last_time=[None], last_frame=[None]):
+            """
+            Hybrid-seeking:
+            - If time jump < 2 sec → use batch get
+            - Else → use direct get_frame()
+            Cached last frame optimizes small forward seeks.
+            """
 
-            return None
+            # small-step optimization
+            if last_time[0] is not None and 0 < (time_sec - last_time[0]) <= 2:
+                frames = get_frames_batch(last_time[0], time_sec, limit=5)
+                if frames:
+                    last_frame[0] = frames[-1]
+                    last_time[0] = time_sec
+                    return frames[-1][:, :, ::-1]
 
-        # ---- PROCESS EACH SCENE ----
+            # fallback: direct get
+            try:
+                rgb = clip.get_frame(time_sec)
+                last_frame[0] = rgb
+                last_time[0] = time_sec
+                return rgb[:, :, ::-1]  # RGB→BGR
+            except:
+                return None
+
+        # ===============================================================
+        # 🔥 PROCESS EACH SCENE
+        # ===============================================================
         for scene_idx, scene in enumerate(scenes, start=1):
             try:
                 start_time = float(scene["Start Time (seconds)"])
                 end_time = float(scene["End Time (seconds)"])
                 duration = end_time - start_time
 
-                # Number of images
                 num_images = max(
                     min_images_per_scene,
                     min(max_images_per_scene, int(duration / interval_seconds) + 1)
@@ -414,8 +443,8 @@ def extract_and_analyze_images(
                 img_idx = 1
 
                 while time_cursor <= end_time and len(frames_data) < num_images:
-                    frame_img = get_frame_at_time(time_cursor)
 
+                    frame_img = fast_get_frame(time_cursor)
                     if frame_img is None:
                         time_cursor += interval_seconds
                         continue
@@ -442,6 +471,7 @@ def extract_and_analyze_images(
                         video_path
                     )
 
+                    # Save output
                     for sub_idx, (start_i, end_i) in enumerate(subscene_bounds, start=1):
                         sub_start_time = frames_data[start_i]['timestamp']
                         sub_end_time = frames_data[end_i]['timestamp']
@@ -450,14 +480,15 @@ def extract_and_analyze_images(
                         # Save images
                         for i in range(start_i, end_i + 1):
                             fd = frames_data[i]
-                            img_arr = fd['image'][:, :, ::-1]  # BGR → RGB
+                            bgr = fd['image']
+                            rgb = bgr[:, :, ::-1]
 
                             img_name = (
                                 f"{base_name}-Scene-{scene_idx:03d}-"
                                 f"Sub-{sub_idx:02d}-{i-start_i+1:02d}.jpg"
                             )
                             img_path = os.path.join(images_dir, img_name)
-                            Image.fromarray(img_arr, mode='RGB').save(img_path)
+                            Image.fromarray(rgb, "RGB").save(img_path)
 
                         all_subscenes_info.append({
                             'scene_num': scene_idx,
@@ -472,7 +503,7 @@ def extract_and_analyze_images(
             except Exception as e:
                 return [], f"[{video_path}] Scene {scene_idx} error: {e}"
 
-        container.close()
+        clip.close()
         return all_subscenes_info, True
 
     except Exception as e:
@@ -775,8 +806,6 @@ def main(video_path, output_path) -> bool:
     try:
         # Load CLIP model
         clip_model, clip_processor, status_msg = load_clip_model(device, video_path)
-        if clip_model is None:
-            return status_msg
         
         images_dir, error_msg = run_scenedetect(video_path, output_path, scene_detect_command)
 
@@ -803,50 +832,31 @@ def main(video_path, output_path) -> bool:
         video_name = os.path.splitext(os.path.basename(video_path))[0]
 
         if not rename_subscene_files(output_path, video_name, subscenes_info, video_path):
-            print(f"[{video_path}] Some files failed to rename")
-            return f"[{video_path}] Some files failed to rename"
+            print(f"[{video_path}] Some files failed to rename, but continuing...")
 
-        subscenes = detect_subscenes_with_clip(
-            images_dir,
-            clip_similarity_threshold,
-            clip_model,
-            clip_processor,
-            device,
-            video_path,
-        )
-        
-        if not subscenes:
-            return f"[{video_path}] CLIP detection failed"
-
-        final_scene_dir = save_subscenes(subscenes, output_path, video_path)
-        if not final_scene_dir:
-            return f"[{video_path}] Failed to save CLIP subscenes"
-
-        # ----------------------------------------------------------------------
-        # FINAL SCENE FOLDER ORGANIZATION
-        # ----------------------------------------------------------------------
-        if not move_files_and_remove_subfolders(final_scene_dir, video_path):
-            return f"[{video_path}] File organization had issues"
-        
-        # if clip_model is not None:
-        #     subscenes = detect_subscenes_with_clip(images_dir, clip_similarity_threshold, clip_model, clip_processor, device, video_path)
+        if clip_model is not None:
+            subscenes = detect_subscenes_with_clip(images_dir, clip_similarity_threshold, clip_model, clip_processor, device, video_path)
             
-        #     if subscenes:
-        #         final_scene_dir = save_subscenes(subscenes, output_path, video_path)
+            if subscenes:
+                final_scene_dir = save_subscenes(subscenes, output_path, video_path)
                 
-        #         if final_scene_dir:
-        #             if not move_files_and_remove_subfolders(final_scene_dir, video_path):
-        #                 print(f"[{video_path}] File organization had issues")
-        #                 return f"[{video_path}] File organization had issues"
-        #         else:
-        #             print(f"[{video_path}] Failed to save CLIP subscenes")
-        #             return f"[{video_path}] Failed to save CLIP subscenes"
-        #     else:
-        #         print(f"[{video_path}] CLIP detection failed, but basic detection completed")
-        #         return f"[{video_path}] CLIP detection failed"
-        # else:
-        #     print(f"[{video_path}] CLIP model not available")
-        #     return status_msg
+                if final_scene_dir:
+                    if not move_files_and_remove_subfolders(final_scene_dir, video_path):
+                        print(f"[{video_path}] File organization had issues, but continuing...")
+                        return f"[{video_path}] File organization had issues, but continuing..."
+                else:
+                    print(f"[{video_path}] Failed to save CLIP subscenes, but continuing...")
+                    return f"[{video_path}] Failed to save CLIP subscenes, but continuing..."
+            else:
+                print(f"[{video_path}] CLIP detection failed, but basic detection completed")
+                return f"[{video_path}] CLIP detection failed, but basic detection completed"
+        else:
+            print(f"[{video_path}] CLIP model not available, skipping semantic detection")
+            return f"[{video_path}] CLIP model not available, skipping semantic detection"
+
+        # # Move final scene folder
+        # scene_images = os.path.join(output_path, "scenes_images")
+        # os.rename(final_scene_dir, scene_images)
         
         # Move final scene folder
         scene_images = os.path.join(output_path, "scenes_images")

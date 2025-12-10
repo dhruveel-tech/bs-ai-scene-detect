@@ -81,25 +81,25 @@ def run_scenedetect(video_path: str, output_dir: str, scene_detect_command: str)
         recreate_dir(images_dir)
         recreate_dir(video_dir)
        
-        # Split video into scenes
-        result = subprocess.Popen(
-            [
-                "scenedetect", 
-                "--backend", "pyav",
-                "-i", video_path,
-                "--output", video_dir,
-                scene_detect_command,
-                "split-video"
-            ],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,bufsize=0
-        )
-        while True:
-            chunk = result.stdout.read(4096)
-            if not chunk:
-                break
+        # # Split video into scenes
+        # result = subprocess.Popen(
+        #     [
+        #         "scenedetect", 
+        #         "--backend", "pyav",
+        #         "-i", video_path,
+        #         "--output", video_dir,
+        #         scene_detect_command,
+        #         "split-video"
+        #     ],
+        #     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,bufsize=0
+        # )
+        # while True:
+        #     chunk = result.stdout.read(4096)
+        #     if not chunk:
+        #         break
  
-            text = chunk.decode("utf-8", errors="ignore")
-            print(f"[{video_path}] Scene split output: {text}")
+        #     text = chunk.decode("utf-8", errors="ignore")
+        #     print(f"[{video_path}] Scene split output: {text}")
        
         # Generate scene list CSV
         result = subprocess.Popen(
@@ -338,6 +338,28 @@ def detect_subscenes_advanced(
 # IMAGE EXTRACTION AND ANALYSIS
 # ============================================================================
 
+# Used for extract frame using gpu-accelerated ffmpeg (optional)
+# def extract_frame_gpu(video_path, output_path, time_sec):
+#     """
+#     Extract a single frame at a specific timestamp using GPU-accelerated FFmpeg.
+#     """
+#     time_str = f"{time_sec:.3f}"
+
+#     cmd = [
+#         "ffmpeg",
+#         "-hwaccel", "cuda",
+#         "-hwaccel_output_format", "cuda",
+#         "-ss", time_str,
+#         "-i", video_path,
+#         "-frames:v", "1",
+#         "-q:v", "2",
+#         output_path,
+#         "-y"
+#     ]
+
+#     subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#     return output_path
+
 def extract_and_analyze_images(
     video_path: str, 
     output_dir: str, 
@@ -415,6 +437,15 @@ def extract_and_analyze_images(
 
                 while time_cursor <= end_time and len(frames_data) < num_images:
                     frame_img = get_frame_at_time(time_cursor)
+                    
+                    # used for extract frame using gpu-accelerated ffmpeg (optional)
+                    
+                    # img_temp_path = os.path.join(images_dir, f"tmp_{time_cursor:.3f}.png")
+                    # extract_frame_gpu(video_path, img_temp_path, time_cursor)
+
+                    # # Load image to ndarray for subscene logic
+                    # frame_img = np.array(Image.open(img_temp_path))
+                    # os.remove(img_temp_path)
 
                     if frame_img is None:
                         time_cursor += interval_seconds
@@ -454,7 +485,7 @@ def extract_and_analyze_images(
 
                             img_name = (
                                 f"{base_name}-Scene-{scene_idx:03d}-"
-                                f"Sub-{sub_idx:02d}-{i-start_i+1:02d}.jpg"
+                                f"Sub-{sub_idx:02d}-{i-start_i+1:02d}.png"
                             )
                             img_path = os.path.join(images_dir, img_name)
                             Image.fromarray(img_arr, mode='RGB').save(img_path)
@@ -477,6 +508,151 @@ def extract_and_analyze_images(
 
     except Exception as e:
         return [], f"[{video_path}] Critical error: {e}"
+
+# def extract_frame_ffmpeg(video_path: str, time_sec: float, output_path: str):
+#     """
+#     Extract a single full-resolution frame using FFmpeg.
+#     Guaranteed original resolution and no quality loss.
+#     """
+#     cmd = [
+#         "ffmpeg",
+#         "-loglevel", "error",
+#         "-ss", str(time_sec),
+#         "-i", video_path,
+#         "-frames:v", "1",
+#         "-q:v", "2",
+#         "-y",
+#         output_path
+#     ]
+#     subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#     if os.path.exists(output_path):
+#         return output_path
+#     return None
+
+
+# def extract_and_analyze_images(
+#     video_path: str, 
+#     output_dir: str, 
+#     interval_seconds: float,
+#     min_images_per_scene: int,
+#     max_images_per_scene: int,
+#     min_subscene_duration: float,
+#     similarity_threshold: float,
+#     structural_threshold: float,
+#     edge_threshold: float
+# ) -> List[Dict]:
+
+#     try:
+#         base_name = os.path.splitext(os.path.basename(video_path))[0]
+#         images_dir = os.path.join(output_dir, "scenes_images")
+#         os.makedirs(images_dir, exist_ok=True)
+
+#         csv_path = os.path.join(images_dir, f"{base_name}-Scenes.csv")
+
+#         if not os.path.exists(csv_path):
+#             return [], f"[{video_path}] Scene CSV not found: {csv_path}"
+
+#         # ---- READ SCENE CSV ----
+#         with open(csv_path, "r", encoding="utf-8") as f:
+#             lines = f.readlines()
+#             cleaned_csv = lines[1:]
+#             reader = csv.DictReader(cleaned_csv)
+#             scenes = list(reader)
+
+#         print(f"[{video_path}] Extracting frames (FFmpeg) every {interval_seconds}s")
+
+#         all_subscenes_info = []
+
+#         # ---- PROCESS EACH SCENE ----
+#         for scene_idx, scene in enumerate(scenes, start=1):
+#             try:
+#                 start_time = float(scene["Start Time (seconds)"])
+#                 end_time = float(scene["End Time (seconds)"])
+#                 duration = end_time - start_time
+
+#                 num_images = max(
+#                     min_images_per_scene,
+#                     min(max_images_per_scene, int(duration / interval_seconds) + 1)
+#                 )
+
+#                 frames_data = []
+#                 time_cursor = start_time
+#                 img_idx = 1
+
+#                 # ---- EXTRACT FRAMES USING FFMPEG ----
+#                 while time_cursor <= end_time and len(frames_data) < num_images:
+
+#                     img_temp_path = os.path.join(images_dir, "temp_extract.png")
+
+#                     # Extract full resolution frame
+#                     frame_path = extract_frame_ffmpeg(
+#                         video_path, time_cursor, img_temp_path
+#                     )
+
+#                     if frame_path is None:
+#                         time_cursor += interval_seconds
+#                         continue
+
+#                     # Load into memory
+#                     img = Image.open(frame_path).convert("RGB")
+#                     np_img = np.array(img)
+
+#                     frames_data.append({
+#                         'image': np_img,
+#                         'timestamp': time_cursor,
+#                         'index': img_idx
+#                     })
+
+#                     img_idx += 1
+#                     time_cursor += interval_seconds
+
+#                 print(f"[{video_path}] Extracted {len(frames_data)} full-resolution frames from scene {scene_idx}")
+
+#                 # ---- SUBSCENE DETECTION ----
+#                 if frames_data:
+#                     subscene_bounds = detect_subscenes_advanced(
+#                         frames_data,
+#                         min_subscene_duration,
+#                         similarity_threshold,
+#                         structural_threshold,
+#                         edge_threshold,
+#                         video_path
+#                     )
+
+#                     # ---- SAVE SUBSCENE IMAGES ----
+#                     for sub_idx, (start_i, end_i) in enumerate(subscene_bounds, start=1):
+#                         sub_start_time = frames_data[start_i]['timestamp']
+#                         sub_end_time = frames_data[end_i]['timestamp']
+#                         sub_duration = sub_end_time - sub_start_time
+
+#                         for i in range(start_i, end_i + 1):
+#                             fd = frames_data[i]
+
+#                             img_name = (
+#                                 f"{base_name}-Scene-{scene_idx:03d}-"
+#                                 f"Sub-{sub_idx:02d}-{i-start_i+1:02d}.png"
+#                             )
+#                             img_path = os.path.join(images_dir, img_name)
+
+#                             Image.fromarray(fd['image']).save(img_path)
+
+#                         all_subscenes_info.append({
+#                             'scene_num': scene_idx,
+#                             'subscene_num': sub_idx,
+#                             'start_time': sub_start_time,
+#                             'end_time': sub_end_time,
+#                             'duration': sub_duration,
+#                             'num_images': end_i - start_i + 1,
+#                             'frames': frames_data[start_i:end_i + 1]
+#                         })
+
+#             except Exception as e:
+#                 return [], f"[{video_path}] Scene {scene_idx} error: {e}"
+
+#         return all_subscenes_info, True
+
+#     except Exception as e:
+#         return [], f"[{video_path}] Critical error: {e}"
 
 # ============================================================================
 # FILE RENAMING
@@ -515,11 +691,11 @@ def rename_subscene_files(
                     timestamp = format_timestamp(frame_data['timestamp'], video_path)
                     old_img = os.path.join(
                         images_dir,
-                        f"{base_name}-Scene-{scene_num:03d}-Sub-{subscene_num:02d}-{i:02d}.jpg"
+                        f"{base_name}-Scene-{scene_num:03d}-Sub-{subscene_num:02d}-{i:02d}.png"
                     )
                     new_img = os.path.join(
                         images_dir,
-                        f"{base_name}-Scene-{scene_num:03d}-Sub-{subscene_num:02d}_{timestamp}.jpg"
+                        f"{base_name}-Scene-{scene_num:03d}-Sub-{subscene_num:02d}_{timestamp}.png"
                     )
                     total_operations += 1
                     if os.path.exists(old_img):
@@ -779,9 +955,9 @@ def main(video_path, output_path) -> bool:
             return status_msg
         
         images_dir, error_msg = run_scenedetect(video_path, output_path, scene_detect_command)
-
+        # images_dir = r"D:\SDNA\Scene_Detector\video_chunks_outputs\7_Wonders_Of_The_World\scenes_images"
         if images_dir is None:
-            return error_msg
+            return "error_msg"
         
         print(f"[{video_path}] Scene detection completed. Images directory: {images_dir}")
 

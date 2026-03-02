@@ -17,6 +17,7 @@ import torch
 import shutil
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel
+import torch.nn.functional as F
 
 # ============================================================================
 # CLIP MODEL SETUP
@@ -54,13 +55,29 @@ def get_features(img_path: str, device, clip_model, clip_processor, video_path) 
         print(f"[{video_path}] Failed to extract features from {img_path}: {e}")
         return None
 
+# def cosine_similarity(a: torch.Tensor, b: torch.Tensor, video_path) -> float:
+#     try:
+#         return torch.dot(a, b).item()
+#     except Exception as e:
+#         print(f"[{video_path}] Failed to calculate cosine similarity: {e}")
+#         return 0.0
+
+
 def cosine_similarity(a: torch.Tensor, b: torch.Tensor, video_path) -> float:
     try:
+        # Force flatten to 1D
+        a = a.squeeze().view(-1)
+        b = b.squeeze().view(-1)
+
+        # Normalize again for safety
+        a = F.normalize(a, dim=0)
+        b = F.normalize(b, dim=0)
+
         return torch.dot(a, b).item()
+
     except Exception as e:
         print(f"[{video_path}] Failed to calculate cosine similarity: {e}")
         return 0.0
-
 # ============================================================================
 # SCENE DETECTION WITH SCENEDETECT
 # ============================================================================
